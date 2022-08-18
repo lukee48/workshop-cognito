@@ -1,0 +1,134 @@
+service: workshop-cognito-auth
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  profile: serverless
+  region: eu-west-1
+  environment:
+    shipping_endpoint: ${ssm:/workshop/cognito/shippingendpoint}
+    billing_endpoint: ${ssm:/workshop/cognito/billingendpoint}
+    user_pool_id: ${ssm:/workshop/cognito/userpoolid}
+    user_pool_token_endpoint: ${ssm:/workshop/cognito/userpooltokenendpoint}
+    order_client_id: ${ssm:/workshop/cognito/orderclientid}
+    order_client_secret: ${ssm:/workshop/cognito/orderclientsecret}
+
+functions:
+  OrderFunction:
+    handler: order-function/handler.handle
+    events:
+      - http:
+          path: /orders
+          method: post
+
+  ShippingFunction:
+    handler: shipping-function/handler.handle
+    events:
+      - http:
+          path: /shipping/nextAvailableDate
+          method: get
+
+  BillingFunction:
+    handler: billing-function/handler.handle
+    events:
+      - http:
+          path: /billing
+          method: post
+
+
+resources:
+  Resources:
+
+## Global
+
+    UserPoolResource:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: workshop
+
+    UserPoolDomainResource:
+      Type: AWS::Cognito::UserPoolDomain
+      Properties:
+        Domain: ${aws:accountId}-workshop
+        UserPoolId:
+          Ref: UserPoolResource
+
+    WorkshopResource:
+      Type: AWS::Cognito::UserPoolResourceServer
+      Properties:
+        Identifier: workshop-resource
+        Name: "WorkshopResource"
+        UserPoolId:
+          Ref: UserPoolResource
+        Scopes:
+          - ScopeName: shipping-read
+            ScopeDescription: Read access to shipping
+          - ScopeName: billing-read
+            ScopeDescription: Read access to billing
+
+
+
+## Order
+
+    OrderClient:
+      Type: AWS::Cognito::UserPoolClient
+      DependsOn:
+        - WorkshopResource
+      Properties:
+        UserPoolId:
+          Ref: UserPoolResource
+        GenerateSecret: true
+        AllowedOAuthFlowsUserPoolClient: True
+        AllowedOAuthFlows:
+          - client_credentials
+        AllowedOAuthScopes:
+          - workshop-resource/billing-read
+          - workshop-resource/shipping-read
+
+    ## Params
+
+    OrderClientId:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /workshop/cognito/orderclientid
+        Type: String
+        Value: "SET-ME"
+
+    OrderClientSecret:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /workshop/cognito/orderclientsecret
+        Type: String
+        Value: "SET-ME"
+
+    ShippingEndpoint:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /workshop/cognito/shippingendpoint
+        Type: String
+        Value: "SET-ME"
+
+    BillingEndpoint:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /workshop/cognito/billingendpoint
+        Type: String
+        Value: "SET-ME"
+
+    UserPoolId:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /workshop/cognito/userpoolid
+        Type: String
+        Value: "SET-ME"
+
+    UserPoolTokenEndpoint:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /workshop/cognito/userpooltokenendpoint
+        Type: String
+        Value: "SET-ME"
+
+plugins:
+  - serverless-esbuild
